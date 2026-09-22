@@ -1,0 +1,8 @@
+# the payload, fetched by makepkg -o or scripts/fetch.sh
+*.tar.gz
+*.tar.xz
+*.sig
+*.efi
+*.pkg.tar.*
+/src/
+/pkg/
