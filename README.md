@@ -27,7 +27,8 @@ in the documents.
 |---|---|
 | `PKGBUILD` | the payload: every file, its URL, its checksum. `makepkg -o` fetches and verifies |
 | `scripts/fetch.sh` | the same, for a build machine without makepkg (bash, curl, sha256sum) |
-| `scripts/build-stick.sh` | writes the install stick from the payload |
+| `scripts/build-stick.sh` | writes the install stick from the payload; regenerates the live system's initramfs in a chroot, so an x86-64 build machine needs `qemu-user-static` with binfmt |
+| `scripts/live.mkinitcpio.conf` | the modules that initramfs needs: the Type-C host chain, without which the stick cannot see itself |
 | `scripts/install.sh` | rides on the stick; installs ARMtix onto the internal disk |
 
 ```sh

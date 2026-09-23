@@ -56,8 +56,8 @@ Each stage carries a status. As of **2026-09-21**:
 | Stage | What it does | Status |
 |---|---|---|
 | 1 | Windows housekeeping | **PROVEN, 2026-09-19.** Every section done on the machine. F2 on the capacitive row must land in the 5 s it shows F1–F12 (§6.4) |
-| 2 | Build the install stick | **PROVEN.** Dry-run twice against a disk image, then written to a USB stick and verified file by file. The published `build-stick.sh` rehearsed again on 2026-09-22 against a disk image, with the September payload, and inspected partition by partition |
-| 3 | Boot the live system | **PROVEN, 2026-09-19.** Boots to a login with `mem=31G`. Without it the machine hard-resets on the first DMA into the top 32 GiB (§8.1). The `-safe` entry was never needed |
+| 2 | Build the install stick | **PROVEN, 2026-09-19**, with an initramfs built by hand. The first stick written by the published `build-stick.sh` (2026-09-22) did **not** boot: it copied the tarball's own initramfs, which holds one module. Since 2026-09-23 the script regenerates the image inside the live root (§7.5, step 6): rehearsed against a disk image, then written to a stick that booted to a login the same morning. **PROVEN with the published script, 2026-09-23** |
+| 3 | Boot the live system | **PROVEN, 2026-09-19**, and again on 2026-09-22 on a stick from the published tree with the regenerated initramfs. Boots to a login with `mem=31G`. Without it the machine hard-resets on the first DMA into the top 32 GiB (§8.1). The `-safe` entry was never needed |
 | 4 | Install to the internal disk | **PROVEN, 2026-09-19**, with the January tarball. The installer preflights the tools the live root lacks (§9.2) and writes the three fixes the installed system needs for USB, Wi-Fi and its DSPs (§9.4). **Rehearsed 2026-09-22 with the September tarball**: the published `install.sh`, run from the stick's live root against a disk image partitioned like Dell's, produced the four partitions, the pinned kernel, the readable firmware and the two boot entries; not booted, since the machine it would boot on was busy running the rehearsal |
 | 5 | First boot and setup | **PROVEN, 2026-09-19.** The default entry reaches a login, no bring-up flags. The first update, Wi-Fi under s6, services and a Wayland compositor on the GPU are chapter 10. Chapter 12 is the first days of use |
 | 6 | Get off the pinned kernel | **Not a stage you perform.** The kernel package with the X1E80100 options is with ARMtix as a merge request, filed 2026-09-21 (chapter 11); once their repository ships it, the pin comes off with a normal update |
@@ -222,7 +222,10 @@ tested" means exactly that.
 - **The laptop**, with Windows as it shipped, and its charger.
 - **A second computer running Linux**, root access, 8 GB of free
   disk. x86-64 or ARM, any distribution. It needs `curl`, `bsdtar`,
-  `sgdisk`, `partprobe`, `mkfs.vfat` and `mkfs.ext4`.[^tools]
+  `sgdisk`, `partprobe`, `mkfs.vfat` and `mkfs.ext4`,[^tools] and on
+  x86-64 also `qemu-user-static` with its binfmt registration, because
+  one step of building the stick runs inside the ARM live system
+  (§7.5, step 6).
 - **A USB stick, 16 GB or larger.** It will be erased.
 - **A wired network connection, or your Wi-Fi password.** The install
   is offline. The first update after it is not.
@@ -632,7 +635,10 @@ It reads the payload from where §7.3 put it (export the same
 the disk, and makes you type the path a second time before it erases
 anything. Find the path with `lsblk` and check the size and model
 twice. A loop device is accepted too, for a rehearsal against a disk
-image.
+image. One step runs inside the ARM live system it has just unpacked
+(step 6 below), so on an x86-64 machine the script checks for
+`qemu-user-static`'s binfmt registration first and stops with a
+message if it is missing.
 
 ### 7.5 What it does, step by step
 
@@ -655,11 +661,35 @@ For installing by hand, or debugging a stick that will not boot.
 5. **Write an `/etc/fstab`** naming the three partitions by label. The
    live system mounts its ESP at `/boot` and the payload at
    `/mnt/payload`.
-6. **Populate the ESP**: the kernel image, the initramfs, the DTB in
+6. **Regenerate the initramfs inside the live root, naming the
+   modules.** The fault this step fixes: the tarball's own initramfs
+   was made by relying on mkinitcpio's *autodetect*, which keeps only
+   the modules the machine generating the image is using. That
+   machine was Arch Linux ARM's build host, so the image holds
+   exactly one module, a compressor, and misses everything this
+   architecture needs before it can boot from USB. On this laptop a
+   USB-C port is not a host port until a chain of modules is up: the
+   eUSB2 PHY and its repeater, the Type-C mux, the PMIC glink client,
+   UCSI, and the DSP that answers them (`usb-primer.md` beside this
+   document walks the chain). A stick booted with the tarball's image
+   never sees itself: the kernel prints, then waits forever for
+   `/dev/disk/by-label/ARMLIVE`. The fix: autodetect is turned off,
+   and `scripts/live.mkinitcpio.conf` names the modules outright and
+   lists the board's firmware, so the DSP can boot inside the
+   initramfs. The script copies that file into the live root's
+   `/etc/mkinitcpio.conf.d/`, bind-mounts `/dev`, `/proc` and `/sys`,
+   and runs mkinitcpio in a chroot of the live root, with the `kms`
+   step off too so the display driver stays out of the image: about
+   400 modules, 50 MB, well under the loader's limit (§12.8). The
+   chroot runs ARM binaries, which is why an x86-64 build machine
+   needs `qemu-user-static` and its binfmt registration (chapter 4).
+   Found on 2026-09-22: the first stick written by the published
+   script skipped this, and the image was the whole difference.
+7. **Populate the ESP**: the kernel image, the initramfs, the DTB in
    two places (one for the boot entry, one for dtbloader),
    `systemd-bootaa64.efi` at both `EFI/BOOT/BOOTAA64.EFI` and
    `EFI/systemd/`, and `dtbloader.efi` under `EFI/systemd/drivers/`.
-7. **Write three boot entries:**
+8. **Write three boot entries:**
 
    | Entry | Differs how | Use when |
    |---|---|---|
@@ -670,21 +700,22 @@ For installing by hand, or debugging a stick that will not boot.
    All three carry `mem=31G` on their `options` line. Without it the
    live system does not survive its first minute. §8.1 has the reason.
 
-8. **Copy the payload** onto partition 3: the ARMtix tarball, the
+9. **Copy the payload** onto partition 3: the ARMtix tarball, the
    kernel package, the three firmware packages, ARMtix's `efibootmgr`
    and its two libraries, `dtbloader.efi`, `install.sh`, this document
    and its companion, and a `SHA256SUMS` file the installer checks
    before it touches the disk. Then `sync` before unplugging.
 
-A verified stick shows roughly: 512 MB ESP with about 58 MB used, a
+A verified stick shows roughly: 512 MB ESP with about 94 MB used, a
 2.6 GB live root, a 1.4 GB payload.
 
 ---
 
 ## 8. Stage 3 — Boot the live system
 
-**Status: proven, 2026-09-19, only with `mem=31G`. Read §8.1 before
-your first boot.**
+**Status: proven, 2026-09-19, only with `mem=31G`; proven again on
+2026-09-23 on a stick written by the published script (§7.5, step 6). Read §8.1 before your first
+boot.**
 
 Plug the stick in, power on, press **F12** at the Dell logo in the
 five seconds the capacitive row shows F1–F12 (§6.4), and choose the
@@ -914,7 +945,9 @@ formats. Installing by hand, check for those two tools first.
 
 Power light on, screen never lights, machine reboots after a while.
 Almost always the device tree. A machine that resets seconds after
-the kernel starts printing is §8.1, not this list.
+the kernel starts printing is §8.1, not this list; a kernel that
+printed and then waits on a start job for `ARMLIVE` is §7.5, step 6,
+not this list either.
 
 1. **Try the `live-dtbloader` entry.** If that boots, the boot entry's
    `devicetree` line is at fault: a typo in the path, or the DTB
@@ -1556,6 +1589,7 @@ have nothing to do with it; each was tried.
 | Black screen, reboot loop, no output at all | device tree not applied | §9.3 |
 | Firmware complains about an unsigned bootloader | Secure Boot still on | §6.4 |
 | Windows asks for a BitLocker recovery key at every boot | Secure Boot changed while BitLocker was genuinely armed — protectors present, not the pre-provisioned state of §6.2 | The key is wherever the protector escrowed it: a Microsoft account, or printed at the time you enabled it. If you never enabled it and never signed in with a Microsoft account, see §6.2 — you are probably not in this row at all |
+| Live system prints, then `A start job is running for /dev/disk/by-label/ARMLIVE`, and no login ever comes | the initramfs on the ESP is the tarball's own, without the Type-C host chain: the stick cannot see itself | §7.5, step 6 |
 | Live system boots, internal disk absent from `lsblk` | NVMe driver or pin control missing → wrong kernel | §7.2 |
 | The machine resets the instant a boot entry is chosen, no kernel output at all | the entry's initrd is larger than ~224 MB (a fallback image, or an image that grew) | §12.8: shrink it, or pick an entry with a normal-sized image |
 | Installed system boots to an `initramfs` rescue prompt | root filesystem not found: wrong label in the boot entry, or the initramfs lacks a driver | §9.2 steps 5 and 7 |

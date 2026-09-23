@@ -38,8 +38,10 @@ for f in alarm-linux-firmware-qcom alarm-linux-firmware-atheros alarm-linux-firm
          armtix-efibootmgr armtix-efivar armtix-popt; do
     one "$f-*.pkg.tar.xz" >/dev/null
 done
-[ -s "$TOP/scripts/install.sh" ] || { echo "missing $TOP/scripts/install.sh" >&2; exit 1; }
-for c in sgdisk partprobe mkfs.vfat mkfs.ext4 bsdtar wipefs lsblk udevadm sha256sum; do
+for f in install.sh live.mkinitcpio.conf; do
+    [ -s "$TOP/scripts/$f" ] || { echo "missing $TOP/scripts/$f" >&2; exit 1; }
+done
+for c in sgdisk partprobe mkfs.vfat mkfs.ext4 bsdtar wipefs lsblk udevadm sha256sum chroot; do
     command -v "$c" >/dev/null || { echo "missing tool: $c" >&2; exit 1; }
 done
 
@@ -68,7 +70,9 @@ mkfs.ext4 -q -L ARMLIVE "$(part 2)"
 mkfs.ext4 -q -L ARMPAYLOAD "$(part 3)"
 
 R=$(mktemp -d); E=$(mktemp -d); P=$(mktemp -d)
-trap 'umount -q "$R" "$E" "$P" 2>/dev/null; rmdir "$R" "$E" "$P" 2>/dev/null' EXIT
+# Bind mounts first; nothing here may fail, or set -e turns a clean exit
+# into umount's status.
+trap 'umount -q "$R/dev" "$R/proc" "$R/sys" "$R" "$E" "$P" 2>/dev/null || true; rmdir "$R" "$E" "$P" 2>/dev/null || true' EXIT
 mount "$(part 2)" "$R"; mount "$(part 1)" "$E"; mount "$(part 3)" "$P"
 
 echo "== live root: Arch Linux ARM tarball"
@@ -95,6 +99,45 @@ LABEL=ARMESP      /boot        vfat  rw,umask=0077 0 2
 LABEL=ARMPAYLOAD  /mnt/payload ext4  rw,relatime  0 2
 FS
 mkdir -p "$R/mnt/payload"
+
+echo "== live root: the initramfs, regenerated for this laptop"
+# The tarball's initramfs relies on mkinitcpio's autodetect, which keeps the
+# modules of the machine generating the image: the distribution's build host.
+# It carries one module (lz4) and none of the Type-C host chain this laptop
+# needs before a USB root can appear, so a stick with it never finds its own
+# root. Regenerated here, inside the live root, with autodetect off and the
+# modules named in scripts/live.mkinitcpio.conf (doc 7.5, step 6). The chroot
+# runs aarch64 binaries: native on an ARM builder, through binfmt_misc on
+# x86-64 (qemu-user-static).
+KVER=$(ls "$R/usr/lib/modules")
+[ "$(echo "$KVER" | wc -l)" = 1 ] || { echo "expected one kernel under the live root, have: $KVER" >&2; exit 1; }
+if [ "$(uname -m)" != aarch64 ] && [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+    echo "cannot run aarch64 binaries on $(uname -m): install qemu-user-static and" >&2
+    echo "qemu-user-static-binfmt (Arch) or qemu-user-static + binfmt-support (Debian)" >&2
+    exit 1
+fi
+cp "$TOP/scripts/live.mkinitcpio.conf" "$R/etc/mkinitcpio.conf.d/live.conf"
+# The board's firmware, so the DSP that owns the Type-C port can boot inside
+# the initramfs; the remoteproc driver declares no MODULE_FIRMWARE, so
+# mkinitcpio would not add it by itself. The .jsn files are symlinks into the
+# LENOVO directory; both ends are listed.
+{
+    printf 'FILES=('
+    (cd "$R" && find usr/lib/firmware/qcom/x1e80100/dell/xps13-9345 \
+                     usr/lib/firmware/qcom/x1e80100/LENOVO/21N1 \
+                     \( -type f -o -type l \) -printf ' /%p')
+    printf ')\n'
+} >> "$R/etc/mkinitcpio.conf.d/live.conf"
+for d in dev proc sys; do mount --bind "/$d" "$R/$d"; done
+LC_ALL=C chroot "$R" mkinitcpio -k "$KVER" -S autodetect,kms -g /boot/initramfs-linux.img
+N=$(LC_ALL=C chroot "$R" lsinitcpio -a /boot/initramfs-linux.img | sed -n 's/^==> Included modules (\([0-9]*\)).*/\1/p')
+for d in sys proc dev; do umount "$R/$d"; done
+[ "${N:-0}" -ge 100 ] || { echo "the regenerated initramfs has ${N:-0} modules; expected hundreds" >&2; exit 1; }
+# The firmware's loader resets the machine on an initrd of 224 MB or more
+# (doc 12.8); 200 MB is the line here.
+SZ=$(stat -c %s "$R/boot/initramfs-linux.img")
+[ "$SZ" -lt 209715200 ] || { echo "the initramfs is $SZ bytes, too large for this firmware (doc 12.8)" >&2; exit 1; }
+echo "   $N modules, $((SZ / 1048576)) MiB"
 
 echo "== ESP"
 cp "$R/boot/Image" "$R/boot/initramfs-linux.img" "$E/"
