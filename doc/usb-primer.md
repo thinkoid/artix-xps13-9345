@@ -70,8 +70,10 @@ orientation and the negotiated mode; the side-band pins go through
 The same mux is why a 4-lane DisplayPort alternate mode (pin
 assignment C) leaves the port with no USB 3 at all, only the USB 2.0
 pair, and a 2-lane mode (assignment D) keeps two lanes for USB 3
-(blueprint §12.2; `dp_debug` under `/sys/kernel/debug/dri/0/DP-*/`
-shows the lane count).
+(`dp_debug` under `/sys/kernel/debug/dri/0/DP-*/` shows the lane
+count). On this laptop the USB 2.0 pair does not survive assignment C
+either: a monitor's hub loses both halves, and the workaround is to
+make the monitor offer two lanes only (blueprint §12.2).
 
 ### 1.4 The port manager: firmware on the aDSP, spoken to over UCSI
 
@@ -183,7 +185,7 @@ reader meets them.
 | **repeater** | in eUSB2 terms, the level shifter that turns eUSB2 signalling into standard USB 2.0 at the connector. Here it lives on the PMIC |
 | **PMIC** | power management IC, the companion chip that regulates supplies and carries oddments such as the eUSB2 repeater, the RTC and the power button |
 | **QMP PHY** | Qualcomm's multi-protocol SerDes PHY; the **combo** variant drives the SuperSpeed lanes as either USB 3 or DisplayPort |
-| **SuperSpeed** | USB 3 at 5 Gb/s and up, on the high-speed lane pairs; USB 2.0 uses its own separate pair (D+/D-) and keeps working when the lanes are given to DisplayPort |
+| **SuperSpeed** | USB 3 at 5 Gb/s and up, on the high-speed lane pairs; USB 2.0 uses its own separate pair (D+/D-) and should keep working when the lanes are given to DisplayPort; on this laptop it does not (blueprint §12.2) |
 | **lanes** | the four high-speed differential pairs of USB-C. USB 3 needs two (one each way); DisplayPort takes two or all four |
 | **mux / retimer** | the switch that routes the lanes to the SoC's USB 3 or DisplayPort PHY according to orientation and mode (mux), and re-times the signal for the cable length (retimer). Here one Parade PS8830 does both |
 | **SBU** | side-band use, two spare pins of USB-C that DisplayPort alternate mode uses for its AUX channel; `gpio-sbu-mux` steers them |

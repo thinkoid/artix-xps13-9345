@@ -205,7 +205,7 @@ tested" means exactly that.
 | NVMe storage | Works | |
 | Wi-Fi | Works | Firmware from 2026-09-16 or newer (§9.4) |
 | Bluetooth | Works | |
-| USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. The monitor's USB 2.0 hub sometimes fails to come up (§12.2) |
+| USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; set the monitor to prefer USB data (§12.2) |
 | Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
 | Speakers, microphones | Not tested | Low priority. On 7.2.6 no sound card registers (§12.5). Bluetooth audio works |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
@@ -1261,11 +1261,53 @@ machine has shown all came from below the kernel, and the mechanism
 is not known. Rule until it is: shut down, move the plug, boot. If
 a hot move must happen, put the charger in the other port first.
 
-**A port with a 4-lane DisplayPort link has no USB 3.** Type-C pin
-assignment C gives DisplayPort all four lanes. The SuperSpeed hub
-then never appears on that port and only the USB 2.0 half can. With
-two lanes (assignment D) the SuperSpeed hub comes up beside 4K60.
-Which one a port negotiated is in
+**A port with a 4-lane DisplayPort link loses the whole hub, not
+only USB 3.** Type-C pin assignment C gives DisplayPort all four
+lanes, so the SuperSpeed hub cannot appear on that port. In principle
+the USB 2.0 half, on its own pair of wires, keeps working. On this
+laptop it does not. Every boot goes the same way until the display
+driver starts, about two seconds in: the firmware left the port in
+plain USB, the USB 2.0 hub is up, mouse and keyboard work. Then the
+port switches to the negotiated DisplayPort mode and the hub
+disconnects, on every boot. With two lanes (assignment D) the
+SuperSpeed hub is back a second later, the USB 2.0 hub after it, and
+everything works. With four lanes the controller's SuperSpeed port
+keeps trying to address a device on lanes that now carry DisplayPort,
+and the console fills for about forty seconds:
+
+```
+xhci-hcd xhci-hcd.1.auto: Timeout while waiting for setup device command
+usb 2-1: device not accepting address 2, error -62
+usb usb2-port1: attempt power cycle
+usb usb1-port1: unable to enumerate USB device
+```
+
+Both halves of the port share that controller, and the USB 2.0 hub
+never comes back. Mouse and keyboard stay dark until a reboot. The
+firmware picks the lane count at each boot and does not say so;
+consecutive boots with nothing changed went 4, 2, 2, 4, 2, 4. In 31
+boots, every one with these timeouts had four lanes and every one
+with two lanes had a working hub.
+
+**Workaround: make the monitor offer two lanes only.** Dell monitors
+call the setting *USB-C Prioritization* in the on-screen menu: *High
+Resolution* allows four lanes, *High Data Speed* two lanes plus USB 3.
+Other makes have an equivalent, often called USB 3 or data priority.
+The laptop's DisplayPort runs at DisplayPort 1.4 rates (HBR3, 8.1
+Gbit/s per lane), so two lanes still carry 3840×2160 at 60 Hz, at 8
+bits per colour instead of 10. **Reboot right after changing it.**
+Flipped with a session up, the link retrained at the slower HBR2
+rate, which cannot carry 4K60 on two lanes, and the panel went black
+until the reboot. After the boot, `dp_debug` should read:
+
+```
+rate = 810000
+num_lanes = 2
+bpp = 24
+```
+
+Tested on one monitor (a Dell U2720QM), first boot clean, being
+counted. What a port negotiated is always in
 `/sys/kernel/debug/dri/0/DP-*/dp_debug`. Read it before deciding a
 hub is absent.
 
@@ -1605,7 +1647,8 @@ have nothing to do with it; each was tried.
 | Compositor fails to take the seat | user not in the `seat` group | §10.3 |
 | Compositor freezes about 30 s in; input works, nothing redraws | GPU reset, lost GL context | §12.3 |
 | A menu or dropdown in a browser blinks on and off at half the refresh rate | freedreno dropped implicit sync for the compositor after its first fence | §12.9 |
-| Mouse or keyboard on the monitor's hub is dark | the hub's USB 2.0 half did not come up; move the plug to the other port | §12.2 |
+| Mouse or keyboard on the monitor's hub is dark, console full of `Timeout while waiting for setup device command` | a 4-lane DisplayPort link; set the monitor to prefer USB data (Dell: *USB-C Prioritization → High Data Speed*) and reboot | §12.2 |
+| Mouse or keyboard on the monitor's hub is dark, no errors, SuperSpeed hub present | the hub's USB 2.0 half did not come up; move the plug to the other port | §12.2 |
 | Battery sits at 100 % all day on a USB-C monitor | power delivery over the video cable, no charge limit set | §12.6 |
 | A charge threshold write "succeeds" and nothing changes | the firmware clamped or ignored it | §12.6 |
 | Status bar shows no battery | no `capacity` file on this SoC | §12.1 |
