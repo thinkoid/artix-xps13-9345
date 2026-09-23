@@ -10,6 +10,9 @@ Written from one machine, every stage run on real hardware.
   1 to 5, what works, what does not, and what the first days found.
 - [**The update companion**](doc/artix-on-xps13-9345-updates.md) —
   keeping it installed: the pins, the checks, the prompts.
+- [**The USB-C primer**](doc/usb-primer.md) — how a port on this laptop
+  becomes a USB host port, link by link, and why the live initramfs
+  must carry the whole chain.
 
 ## The short of it
 
