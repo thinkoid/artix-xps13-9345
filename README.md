@@ -4,7 +4,11 @@ A blueprint for installing Artix Linux, Arch without systemd, on Dell's
 Snapdragon X Elite laptop (X1E-80-100, codename *tributo*): from a
 Windows machine as it comes out of the box to a working Wayland desktop
 on the GPU, with every acronym spelled out and every decision explained.
-Written from one machine, every stage run on real hardware.
+Written from one machine, every stage run on real hardware once. The
+scripts as published were then proven as far as the stick and its
+boot; the installer as published is the recorded install with the
+names scrubbed, rehearsed against a disk image, and the case that it
+works rests on that record rather than on a second install.
 
 - [**The blueprint**](doc/artix-on-xps13-9345.md) — the install, stages
   1 to 5, what works, what does not, and what the first days found.

@@ -721,8 +721,9 @@ Plug the stick in, power on, press **F12** at the Dell logo in the
 five seconds the capacitive row shows F1–F12 (§6.4), and choose the
 USB device. The menu shows the three entries from §7.5. Take `live`.
 
-Expect a wall of kernel messages, two pauses of about 90 seconds each
-(§8.2), and then a login prompt. Arch Linux ARM's documented
+Expect a wall of kernel messages and then a login prompt, inside a
+minute. (A stick built by hand from the tarball also pauses twice for
+about 90 seconds, §8.2; the published stick does not.) Arch Linux ARM's documented
 credentials are `root` / `root` (and a normal user `alarm` / `alarm`).
 Log in as root.
 
@@ -810,13 +811,14 @@ this machine.
 
 ### 8.2 Two long pauses at boot, and why they are not yours
 
-The live system waits about 90 seconds, twice, before the login
-prompt: once for a serial console the device tree names but the
-laptop does not wire out (`ttyMSM0`), once for a TPM the firmware does
-not expose. Both are the tarball's systemd defaults for other boards.
-Harmless. `build-stick.sh` masks the two units
-(`serial-getty@ttyMSM0.service` and `tpm2.target`). On a stick built
-by hand, expect the pauses.
+A live system built by hand from the tarball waits about 90 seconds,
+twice, before the login prompt: once for a serial console the device
+tree names but the laptop does not wire out (`ttyMSM0`), once for a
+TPM the firmware does not expose. Both are the tarball's systemd
+defaults for other boards. Harmless. `build-stick.sh` masks the two
+units (`serial-getty@ttyMSM0.service` and `tpm2.target`), and a stick
+it wrote went from the boot menu to the login with no wait at all
+(2026-09-22). On a stick built by hand, expect the pauses.
 
 ---
 
@@ -1545,18 +1547,15 @@ native Wayland, on the internal panel and on an external monitor;
 Chrome worse, because it repaints small regions more often. Found
 2026-09-22.
 
-The compositor is at fault only by association. wlroots' GLES2
-renderer ends every render pass with a fence file descriptor for the
-KMS commit. On the first submit that carries one, freedreno (Mesa
-26.2.3) switches the whole process to explicit sync and stops waiting
-on the implicit fences of the client buffers it samples
-(`src/freedreno/drm/freedreno_ringbuffer_sp.c`). Clients that speak no
-explicit-sync protocol get copied mid-frame, and the region painted
-once ends up in one of the compositor's two buffers and not the other.
-Mesa ships the same exception for Xwayland, which mixes both kinds of
-client (`/usr/share/drirc.d/00-msm-defaults.conf`). The freedreno
-maintainer's position is that a compositor doing explicit sync must
-bridge the client fences itself (mesa/mesa#16387); wlroots' Vulkan
+For the mechanism: the Adreno GPU driver, freedreno, took the path
+of disabling implicit sync once explicit sync is on. Because of this,
+a compositor (like the one in chapter 10) that serves clients that do
+not speak explicit sync ends up copying them mid-frame, and the region
+painted once ends up in one of the compositor's two buffers and not in
+the other. Mesa makes an exception for Xwayland for exactly this
+reason, its mix of clients. Finally, the freedreno maintainer's
+position is that a compositor doing explicit sync must bridge the
+client fences itself (mesa/mesa#16387, since closed); wlroots' Vulkan
 renderer does, its GLES2 renderer does not.
 
 Until wlroots does, one file fixes it, naming your compositor's
