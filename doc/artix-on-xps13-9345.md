@@ -1001,9 +1001,9 @@ mkinitcpio -P
 ```
 
 A one-off `find /usr/lib/firmware -name '*.zst' -exec unzstd -q --rm {} +`
-also works, but leaves files pacman does not own. The proper fix is a
-kernel that reads zstd, one configuration line; it is part of the
-merge request chapter 11 describes.
+also works, but leaves files pacman does not own. The proper fix is
+ARMtix's own kernel, which reads zstd already; the merge request of
+chapter 11 makes it boot this laptop.
 
 The atheros package must be 20260916 or newer. The January 2026 set
 in the ARMtix tarball associates and then times out in the WPA 4-way
@@ -1168,12 +1168,16 @@ checklist. Chapter 12 is what the first days of use found.
 
 ## 11. The kernel pin — next step, not yet nailed down
 
-At the end of stage 5 you are on a pinned foreign kernel: Arch Linux
-ARM's, because ARMtix's had the X1E80100 options off and cannot read
-ARMtix's own zstd-compressed firmware (§9.4). The fix is ARMtix's own
-kernel recipe bumped to Arch Linux ARM's version and configuration,
-plus `CONFIG_FW_LOADER_COMPRESS_ZSTD=y`; that package exists and boots
-this laptop. It is filed with ARMtix as merge request !2 (2026-09-21),
+At the end of stage 5 you are on a pinned foreign kernel, Arch Linux
+ARM's, because ARMtix's has the X1E80100 options off (§7.2). The
+foreign kernel reads only `xz`-compressed firmware, so the firmware is
+Arch Linux ARM's too, pinned beside it (§9.4). The fix is ARMtix's
+own kernel recipe bumped to 7.2.6 on Arch Linux ARM's source and
+patches, with **ARMtix's own configuration** carried forward and the
+options the X1E80100 device trees ask for added to it. That
+configuration already reads zstd-compressed firmware, so ARMtix's own
+firmware loads under it. The package exists and boots this laptop.
+It is filed with ARMtix as merge request !2 (2026-09-21),
 carrying the battery fix of §12.1 and one more configuration line:
 `CONFIG_LSM` naming `landlock`, without which pacman 7's download
 sandbox fails on every download. Until their repository ships it, the
