@@ -205,7 +205,7 @@ tested" means exactly that.
 | NVMe storage | Works | |
 | Wi-Fi | Works | Firmware from 2026-09-16 or newer (§9.4) |
 | Bluetooth | Works | |
-| USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; set the monitor to prefer USB data (§12.2) |
+| USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; setting the monitor to prefer USB data makes that rarer, not impossible (§12.2) |
 | Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
 | Speakers, microphones | Not tested | Low priority. On 7.2.6 no sound card registers (§12.5). Bluetooth audio works |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
@@ -1289,10 +1289,11 @@ consecutive boots with nothing changed went 4, 2, 2, 4, 2, 4. In 31
 boots, every one with these timeouts had four lanes and every one
 with two lanes had a working hub.
 
-**Workaround: make the monitor offer two lanes only.** Dell monitors
+**Workaround, partial: ask the monitor for two lanes.** Dell monitors
 call the setting *USB-C Prioritization* in the on-screen menu: *High
-Resolution* allows four lanes, *High Data Speed* two lanes plus USB 3.
-Other makes have an equivalent, often called USB 3 or data priority.
+Resolution* allows four lanes, *High Data Speed* asks for two lanes
+plus USB 3. Other makes have an equivalent, often called USB 3 or
+data priority.
 The laptop's DisplayPort runs at DisplayPort 1.4 rates (HBR3, 8.1
 Gbit/s per lane), so two lanes still carry 3840×2160 at 60 Hz, at 8
 bits per colour instead of 10. **Reboot right after changing it.**
@@ -1306,8 +1307,26 @@ num_lanes = 2
 bpp = 24
 ```
 
-Tested on one monitor (a Dell U2720QM), first boot clean, being
-counted. What a port negotiated is always in
+**The setting does not guarantee two lanes.** Tested on one monitor
+(a Dell U2720QM): of the first three boots on *High Data Speed*, two
+came up with two lanes and a whole hub, and the third negotiated four
+lanes anyway, at the faster HBR3 rate and 10 bits per colour, with
+the menu still reading *High Data Speed*. That boot lost the hub
+exactly as above:
+
+```
+rate = 810000
+num_lanes = 4
+bpp = 30
+```
+
+So the setting shifts the odds and does not pin the mode; the lane
+count is still chosen by the firmware at each boot, out of the
+kernel's sight. When a boot comes up with four lanes, reboot. If the
+mouse and keyboard must work on every boot, keep them off the
+monitor's hub: Bluetooth, or the laptop's other port.
+
+What a port negotiated is always in
 `/sys/kernel/debug/dri/0/DP-*/dp_debug`. Read it before deciding a
 hub is absent.
 
@@ -1647,7 +1666,7 @@ have nothing to do with it; each was tried.
 | Compositor fails to take the seat | user not in the `seat` group | §10.3 |
 | Compositor freezes about 30 s in; input works, nothing redraws | GPU reset, lost GL context | §12.3 |
 | A menu or dropdown in a browser blinks on and off at half the refresh rate | freedreno dropped implicit sync for the compositor after its first fence | §12.9 |
-| Mouse or keyboard on the monitor's hub is dark, console full of `Timeout while waiting for setup device command` | a 4-lane DisplayPort link; set the monitor to prefer USB data (Dell: *USB-C Prioritization → High Data Speed*) and reboot | §12.2 |
+| Mouse or keyboard on the monitor's hub is dark, console full of `Timeout while waiting for setup device command` | a 4-lane DisplayPort link; reboot, and set the monitor to prefer USB data (Dell: *USB-C Prioritization → High Data Speed*), which makes it rarer but does not rule it out | §12.2 |
 | Mouse or keyboard on the monitor's hub is dark, no errors, SuperSpeed hub present | the hub's USB 2.0 half did not come up; move the plug to the other port | §12.2 |
 | Battery sits at 100 % all day on a USB-C monitor | power delivery over the video cable, no charge limit set | §12.6 |
 | A charge threshold write "succeeds" and nothing changes | the firmware clamped or ignored it | §12.6 |

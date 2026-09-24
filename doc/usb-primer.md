@@ -72,8 +72,9 @@ assignment C) leaves the port with no USB 3 at all, only the USB 2.0
 pair, and a 2-lane mode (assignment D) keeps two lanes for USB 3
 (`dp_debug` under `/sys/kernel/debug/dri/0/DP-*/` shows the lane
 count). On this laptop the USB 2.0 pair does not survive assignment C
-either: a monitor's hub loses both halves, and the workaround is to
-make the monitor offer two lanes only (blueprint §12.2).
+either: a monitor's hub loses both halves. Asking the monitor for two
+lanes makes that rarer but does not rule it out; the firmware still
+picks the mode at each boot (blueprint §12.2).
 
 ### 1.4 The port manager: firmware on the aDSP, spoken to over UCSI
 
