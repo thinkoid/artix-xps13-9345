@@ -37,9 +37,9 @@ The result is Artix Linux, Arch Linux without systemd, on a Qualcomm
 Snapdragon X Elite. Display, keyboard, touchpad, touchscreen, Wi-Fi,
 Bluetooth, GPU acceleration, NVMe and USB-C all work. Suspend to RAM
 works in both modes; failures have occurred and are under
-investigation. The speakers work with a kernel carrying three
-changes (§12.5). Microphones, fan control and the camera are
-untested. The machine uses 31 GB of its 64 GB until the firmware or
+investigation. The speakers and the internal microphones work with
+a kernel carrying three changes (§12.5). Fan control and the camera
+are untested. The machine uses 31 GB of its 64 GB until the firmware or
 the boot method changes (§8.1). Chapter 3 has the table.
 
 **Time budget:** an evening for stages 1–4 if nothing goes wrong, plus
@@ -209,7 +209,7 @@ tested" means exactly that.
 | USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; setting the monitor to prefer USB data makes that rarer, not impossible (§12.2) |
 | Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
 | Speakers | Works | All four, in stereo. With a kernel carrying the sound node, the machine driver and one volume fix, none of them in the installed kernel yet; three small PipeWire and WirePlumber fragments (§12.5). Bluetooth and USB audio work on any kernel |
-| Microphones | Not tested | They enumerate with the speakers' kernel (§12.5) |
+| Microphones | Works | The internal ones, with the speakers' kernel and no configuration of their own (§12.5) |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
 | Camera | Not tested | Low priority |
 | Battery gauge | Works, minus the percent | The `capacity` file is missing; a one-line driver fix is on `linux-pm` (§12.1) |
@@ -1408,8 +1408,10 @@ was seen once, right after two such resets, and never since.
 ### 12.5 Audio
 
 **The four speakers work** (2026-09-23): both channels, volume
-control, desktop and browser playback through PipeWire. Microphones
-enumerate and are not tested. Bluetooth audio works (`bluez`,
+control, desktop and browser playback through PipeWire. **The
+internal microphones work** too: PipeWire's `Internal microphones`
+source, two channels from `hw:X1E80100DellXPS,3` through the UCM HiFi
+profile, with nothing configured for them. Bluetooth audio works (`bluez`,
 `bluez-utils`, `bluez-s6`, and the s6 boot-set step in §10.2), and so
 does **USB audio**: a USB-C headset or a USB-C-to-3.5 mm adapter is a
 USB Audio Class device with its own DAC, `snd-usb-audio` binds it on
@@ -1514,7 +1516,7 @@ pw-record --target <speaker sink id> -P '{ stream.capture.sink=true }' \
 
 A left-only tone should show in FL and RL and nowhere else.
 
-Not verified: the microphones, audio across suspend.
+Not verified: audio across suspend.
 
 ### 12.6 Keeping the pack off 100 %
 
