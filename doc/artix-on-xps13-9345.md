@@ -1411,7 +1411,8 @@ was seen once, right after two such resets, and never since.
 control, desktop and browser playback through PipeWire. **The
 internal microphones work** too: PipeWire's `Internal microphones`
 source, two channels from `hw:X1E80100DellXPS,3` through the UCM HiFi
-profile, with nothing configured for them. Bluetooth audio works (`bluez`,
+profile, with nothing configured for them; tested by recording in a
+browser. Bluetooth audio works (`bluez`,
 `bluez-utils`, `bluez-s6`, and the s6 boot-set step in §10.2), and so
 does **USB audio**: a USB-C headset or a USB-C-to-3.5 mm adapter is a
 USB Audio Class device with its own DAC, `snd-usb-audio` binds it on
