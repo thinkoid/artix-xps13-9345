@@ -1429,7 +1429,7 @@ this document installs (Arch Linux ARM's 7.2.6) or in merge request
    digital microphones. Without it `/proc/asound/cards` is empty.
 3. **A volume fix in `lpass-wsa-macro`**: rewrite the digital volume
    register after the playback path's clock is enabled. Upstream
-   removed that rewrite in 902f497a1ff5 (7.2); without it a volume set
+   removed that rewrite in 902f497a1ff5 (6.19); without it a volume set
    while nothing plays does not take effect when playback starts, so
    the speakers sit at whatever level they last played. Three lines in
    `wsa_macro_enable_interpolator()`, not upstream.
