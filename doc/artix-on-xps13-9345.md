@@ -37,7 +37,8 @@ The result is Artix Linux, Arch Linux without systemd, on a Qualcomm
 Snapdragon X Elite. Display, keyboard, touchpad, touchscreen, Wi-Fi,
 Bluetooth, GPU acceleration, NVMe and USB-C all work. Suspend to RAM
 works in both modes; failures have occurred and are under
-investigation. Speakers, microphones, fan control and the camera are
+investigation. The speakers work with a kernel carrying three
+changes (§12.5). Microphones, fan control and the camera are
 untested. The machine uses 31 GB of its 64 GB until the firmware or
 the boot method changes (§8.1). Chapter 3 has the table.
 
@@ -207,7 +208,8 @@ tested" means exactly that.
 | Bluetooth | Works | |
 | USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; setting the monitor to prefer USB data makes that rarer, not impossible (§12.2) |
 | Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
-| Speakers, microphones | Not tested | Low priority. On 7.2.6 no sound card registers (§12.5). Bluetooth audio works |
+| Speakers | Works | All four, in stereo. With a kernel carrying the sound node, the machine driver and one volume fix, none of them in the installed kernel yet; three small PipeWire and WirePlumber fragments (§12.5). Bluetooth and USB audio work on any kernel |
+| Microphones | Not tested | They enumerate with the speakers' kernel (§12.5) |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
 | Camera | Not tested | Low priority |
 | Battery gauge | Works, minus the percent | The `capacity` file is missing; a one-line driver fix is on `linux-pm` (§12.1) |
@@ -1403,23 +1405,116 @@ embedded controller after one of the firmware resets in §12.8 leaves
 it in a strange state — a function row lit on a machine that is off
 was seen once, right after two such resets, and never since.
 
-*Corrected 2026-09-21: an earlier version of this section said the
-EC is never told about the power-off and stays in "system running";
-that was one morning's observation after two resets, not the steady
-state.*
-
 ### 12.5 Audio
 
-Speakers and microphones are not tested. On 7.2.6 no sound card
-registers: the codec macros probe, the topology file for this model
-is in `linux-firmware`, and the DSP's audio process manager does not
-answer (`qcom-apm … CMD timeout`), so `/proc/asound/cards` is empty.
-Bluetooth audio works (`bluez`, `bluez-utils`, `bluez-s6`, and the s6
-boot-set step in §10.2), and so does **USB audio**: a USB-C headset or
-a USB-C-to-3.5 mm adapter is a USB Audio Class device with its own
-DAC, `snd-usb-audio` binds it on the spot, and nothing on the SoC's
-audio path is involved. Do not force the speaker path: on this
-platform a wrong amplifier configuration can damage the speakers.
+**The four speakers work** (2026-09-23): both channels, volume
+control, desktop and browser playback through PipeWire. Microphones
+enumerate and are not tested. Bluetooth audio works (`bluez`,
+`bluez-utils`, `bluez-s6`, and the s6 boot-set step in §10.2), and so
+does **USB audio**: a USB-C headset or a USB-C-to-3.5 mm adapter is a
+USB Audio Class device with its own DAC, `snd-usb-audio` binds it on
+the spot, and nothing on the SoC's audio path is involved.
+
+**What the kernel needs.** Three pieces, none of them in the kernel
+this document installs (Arch Linux ARM's 7.2.6) or in merge request
+!2:
+
+1. **The machine driver**, `CONFIG_SND_SOC_X1E80100=m`. Arch Linux
+   ARM's configuration already has it.
+2. **The sound node in the 9345's device tree**, not in mainline or
+   linux-next yet: the out-of-tree series by Sibi Sankar and Alex
+   Vinarskis, carried in
+   [linux-x1e80100-dell-tributo](https://github.com/alexVinarskis/linux-x1e80100-dell-tributo).
+   It describes four WSA8845 amplifiers on two SoundWire buses and the
+   digital microphones. Without it `/proc/asound/cards` is empty.
+3. **A volume fix in `lpass-wsa-macro`**: rewrite the digital volume
+   register after the playback path's clock is enabled. Upstream
+   removed that rewrite in 902f497a1ff5 (7.2); without it a volume set
+   while nothing plays does not take effect when playback starts, so
+   the speakers sit at whatever level they last played. Three lines in
+   `wsa_macro_enable_interpolator()`, not upstream.
+
+A kernel package carrying all three has run this laptop since
+2026-09-23 and will be published with the kernel work of chapter 11.
+Until then the pieces are the ones above. With the device tree
+changed and the stock volume code, the speakers play and the volume
+quirk of item 3 remains; that was tested with the machine driver
+built separately, not on Arch Linux ARM's kernel itself.
+The driver caps the amplifiers at -3 dB digital and 0 dB amplifier
+gain; leave those caps alone, a wrong amplifier configuration can
+damage the speakers.
+
+**What userspace needs.** `alsa-ucm-conf` and the audio topology in
+`linux-firmware` already carry this model; nothing to add there.
+PipeWire, WirePlumber and `pipewire-pulse` (plus `rtkit`), started
+with the graphical session: Artix starts no per-user services by
+itself, so the compositor's startup or a small supervised tree has to
+start them. Two WirePlumber fragments in
+`~/.config/wireplumber/wireplumber.conf.d/`, and one PipeWire fragment:
+
+```
+# 51-xps13-speakers.conf
+# Raw channel order: right woofer, left woofer, right tweeter, left tweeter.
+monitor.alsa.rules = [
+  {
+    matches = [ { device.name = "alsa_card.platform-sound" } ]
+    actions = { update-props = { api.alsa.soft-mixer = true } }
+  }
+  {
+    matches = [ { node.name = "alsa_output.platform-sound.HiFi__Speaker__sink" } ]
+    actions = {
+      update-props = {
+        audio.position = [ FR FL RR RL ]
+      }
+    }
+  }
+]
+```
+
+```
+# 52-no-v4l2.conf
+wireplumber.profiles = {
+  main = { monitor.v4l2 = disabled }
+}
+```
+
+```
+# 51-xps13-upmix.conf, in both ~/.config/pipewire/client.conf.d/
+# and ~/.config/pipewire/pipewire-pulse.conf.d/
+stream.properties = {
+    channelmix.upmix        = true
+    channelmix.upmix-method = simple
+}
+```
+
+The first corrects the channel map: the raw channel order is right
+woofer, left woofer, right tweeter, left tweeter, so without it
+stereo comes out mirrored. It also moves volume to a
+software mixer, which behaves predictably where the amplifier gain
+controls do not. The second works around a WirePlumber stall: the
+video decoder's V4L2 device fails to open (its Dell firmware is
+missing), and WirePlumber's camera discovery then blocks audio
+policy. The speaker nodes appear with no ports, and `pw-play` waits
+forever. Remove it when the camera is worked on and needs V4L2.
+
+The PipeWire fragment sends stereo to all four speakers. The sink has
+four channels and a stereo stream fills only the first two, the
+woofers, unless the stream upmixes; PipeWire converts on the stream's
+side, so the setting belongs to the clients (native and PulseAudio),
+not to the sink. With it, the left channel plays on the left woofer
+and, 3 dB lower, the left tweeter, and the same on the right.
+Restart `pipewire-pulse` after adding it. To check what the speakers
+receive, record the sink's monitor on four named channels while a
+one-sided test tone plays:
+
+```
+pw-record --target <speaker sink id> -P '{ stream.capture.sink=true }' \
+    --channels 4 --channel-map FL,FR,RL,RR monitor.wav
+```
+
+A left-only tone should show in FL and RL and nowhere else.
+
+Not verified: the microphones, audio across suspend.
 
 ### 12.6 Keeping the pack off 100 %
 
@@ -1672,7 +1767,10 @@ have nothing to do with it; each was tried.
 | A charge threshold write "succeeds" and nothing changes | the firmware clamped or ignored it | §12.6 |
 | Status bar shows no battery | no `capacity` file on this SoC | §12.1 |
 | Opening the lid boots a machine you powered off | the firmware's Power On Lid Open switch, on by default | §12.4 |
-| No sound card | the DSP audio service does not answer; speakers not tested | §12.5 |
+| No sound card, `/proc/asound/cards` empty | the device tree has no sound node | §12.5 |
+| Speaker sink exists but nothing plays, `pw-play` waits forever | WirePlumber's camera discovery stalled audio policy | §12.5 |
+| Stereo comes out mirrored | channel map; the first WirePlumber fragment | §12.5 |
+| Only the woofers play, tweeters silent | stereo streams are not upmixed; the PipeWire fragment | §12.5 |
 | Fans never spin up | no EC driver; not tested | chapter 3 |
 
 **Keep the stick.** It is a complete rescue environment: boot it,
