@@ -38,7 +38,9 @@ Snapdragon X Elite. Display, keyboard, touchpad, touchscreen, Wi-Fi,
 Bluetooth, GPU acceleration, NVMe and USB-C all work. Suspend to RAM
 works in both modes; failures have occurred and are under
 investigation. The speakers and the internal microphones work with
-a kernel carrying three changes (§12.5). Fan control and the camera
+a kernel carrying three changes (§12.5). Hardware video decoding
+works with a kernel that builds the decoder's driver and one firmware
+file copied from Windows (§12.10). Fan control and the camera
 are untested. The machine uses 31 GB of its 64 GB until the firmware or
 the boot method changes (§8.1). Chapter 3 has the table.
 
@@ -187,8 +189,9 @@ initramfs.
 
 The device tree for this laptop has been in the mainline kernel since
 late 2024, under the Dell codename `tributo`. Dell's firmware blobs
-have shipped in `linux-firmware` since March 2026. Nothing has to be
-extracted from the Windows partition.
+have shipped in `linux-firmware` since March 2026. One file is
+missing from them, the video decoder's, and it comes from the Windows
+partition (§12.10); nothing else has to be extracted.
 
 ---
 
@@ -211,6 +214,7 @@ tested" means exactly that.
 | Speakers | Works | All four, in stereo. With a kernel carrying the sound node, the machine driver and one volume fix, none of them in the installed kernel yet; three small PipeWire and WirePlumber fragments (§12.5). Bluetooth and USB audio work on any kernel |
 | Microphones | Works | The internal ones, with the speakers' kernel and no configuration of their own (§12.5) |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
+| Video decoding | Works | H.264, HEVC, VP9 and AV1 in hardware, through V4L2. Needs a kernel with `CONFIG_VIDEO_QCOM_IRIS` (Arch Linux ARM's has it off) and one firmware file copied from Windows (§12.10) |
 | Camera | Not tested | Low priority |
 | Battery gauge | Works, minus the percent | The `capacity` file is missing; a one-line driver fix is on `linux-pm` (§12.1) |
 | Battery life | About 7½ h | 6.9–7.2 W at light interactive load (§12.1). Idle not measured |
@@ -1452,8 +1456,9 @@ damage the speakers.
 PipeWire, WirePlumber and `pipewire-pulse` (plus `rtkit`), started
 with the graphical session: Artix starts no per-user services by
 itself, so the compositor's startup or a small supervised tree has to
-start them. Two WirePlumber fragments in
-`~/.config/wireplumber/wireplumber.conf.d/`, and one PipeWire fragment:
+start them. One WirePlumber fragment in
+`~/.config/wireplumber/wireplumber.conf.d/`, a second one only in the
+case described below, and one PipeWire fragment:
 
 ```
 # 51-xps13-speakers.conf
@@ -1494,11 +1499,14 @@ The first corrects the channel map: the raw channel order is right
 woofer, left woofer, right tweeter, left tweeter, so without it
 stereo comes out mirrored. It also moves volume to a
 software mixer, which behaves predictably where the amplifier gain
-controls do not. The second works around a WirePlumber stall: the
-video decoder's V4L2 device fails to open (its Dell firmware is
-missing), and WirePlumber's camera discovery then blocks audio
-policy. The speaker nodes appear with no ports, and `pw-play` waits
-forever. Remove it when the camera is worked on and needs V4L2.
+controls do not. The second works around a WirePlumber stall, and
+is needed only on a kernel that builds the video decoder's driver
+while its firmware is missing: the decoder's V4L2 device then fails
+to open, and WirePlumber's device discovery blocks audio policy. The
+speaker nodes appear with no ports, and `pw-play` waits forever.
+Installing the firmware (§12.10) removes the cause, and the fragment
+is not needed; on Arch Linux ARM's kernel, which lacks the driver,
+neither is.
 
 The PipeWire fragment sends stereo to all four speakers. The sink has
 four channels and a stereo stream fills only the first two, the
@@ -1738,6 +1746,70 @@ environment (turnip imports client fences explicitly), or
 compression, the tiled or direct render path and buffer modifiers
 have nothing to do with it; each was tried.
 
+### 12.10 Hardware video decoding: one file from Windows
+
+The SoC's video block, **Iris**, decodes H.264, HEVC, VP9 and AV1 in
+hardware and shows up as two V4L2 memory-to-memory devices,
+`/dev/video0` the decoder and `/dev/video1` the encoder. Two things
+stand between the installed system and it:
+
+1. **The driver.** `CONFIG_VIDEO_QCOM_IRIS`, off in Arch Linux ARM's
+   configuration (through 7.2.7), so the kernel of stage 3 has no Iris
+   at all. The kernel package of chapter 11 builds it as a module.
+2. **The firmware.** The device tree asks for
+   `qcom/x1e80100/dell/xps13-9345/qcvss8380.mbn`, signed by Dell, and
+   `linux-firmware` 20260916 does not ship it: Dell's directory there
+   holds the DSP, GPU and audio topology files only. Without it every
+   open fails, the kernel logs `Direct firmware load for
+   qcom/x1e80100/dell/xps13-9345/qcvss8380.mbn failed with error -2`
+   and `core init failed`, and a WirePlumber with its V4L2 monitor on
+   stalls audio (§12.5).
+
+The Windows partition has the file. It ships with Qualcomm's Adreno
+**GPU** driver, not a camera or video one, and sits in Windows'
+driver store. BitLocker is off since §6.2, so Linux can read the
+partition; mount it **read-only**, `C:` is partition 3 (§9.1):
+
+```sh
+mkdir -p /mnt/windows
+mount -t ntfs3 -o ro /dev/nvme0n1p3 /mnt/windows
+cd /mnt/windows/Windows/System32/DriverStore/FileRepository
+grep DriverVer qcdx8380.inf_arm64_*/qcdx8380.inf
+```
+
+The store keeps every version the updates brought, one directory
+each. Take the newest `DriverVer`; this laptop's newest was
+31.0.148.0, dated 2026-02-28. From that directory copy
+`qcvss8380.mbn`, **not** `qcvss8380_pa.mbn`: the driver's INF installs
+the `_pa` file only on the X Plus chip (codename Purwa), not the X
+Elite in this laptop.
+
+```sh
+install -m644 qcdx8380.inf_arm64_<newest>/qcvss8380.mbn \
+    /usr/lib/firmware/qcom/x1e80100/dell/xps13-9345/
+cd / && umount /mnt/windows
+```
+
+Leave it **uncompressed**: Arch Linux ARM's kernel reads only
+`xz`-compressed firmware (§9.4), and every kernel reads a plain file.
+No package owns it, so no update replaces it or removes it; a
+reinstall does, and then this step is repeated.
+
+No reboot. Iris loads its firmware when the device is first opened,
+and retries at every open until it succeeds:
+
+```sh
+v4l2-ctl -d /dev/video0 --info        # v4l-utils; "Card type : Iris Decoder"
+dmesg | grep qcom-iris                # no new "failed" lines after the open
+```
+
+A decode confirms it:
+`ffmpeg -c:v h264_v4l2m2m -i clip.mp4 -f null -` names
+`driver 'iris_driver'` and runs faster than real time. Tested
+2026-09-24 on kernel 7.2.6 with the driver built: H.264 at 720p,
+every frame, 15.8 times real time, with WirePlumber's V4L2 monitor
+back on and audio unaffected.
+
 ## 13. When it goes wrong
 
 *Shaka, its kernel panicked.*[^shaka]
@@ -1771,7 +1843,8 @@ have nothing to do with it; each was tried.
 | Status bar shows no battery | no `capacity` file on this SoC | §12.1 |
 | Opening the lid boots a machine you powered off | the firmware's Power On Lid Open switch, on by default | §12.4 |
 | No sound card, `/proc/asound/cards` empty | the device tree has no sound node | §12.5 |
-| Speaker sink exists but nothing plays, `pw-play` waits forever | WirePlumber's camera discovery stalled audio policy | §12.5 |
+| Speaker sink exists but nothing plays, `pw-play` waits forever | the video decoder's firmware is missing, its V4L2 device fails to open, and WirePlumber's device discovery stalls audio policy | §12.10, or the second fragment of §12.5 |
+| `qcom-iris … qcvss8380.mbn failed with error -2` in `dmesg` | the video decoder's firmware is not in `linux-firmware` | §12.10 |
 | Stereo comes out mirrored | channel map; the first WirePlumber fragment | §12.5 |
 | Only the woofers play, tweeters silent | stereo streams are not upmixed; the PipeWire fragment | §12.5 |
 | Fans never spin up | no EC driver; not tested | chapter 3 |
