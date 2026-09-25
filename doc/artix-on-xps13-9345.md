@@ -1724,13 +1724,17 @@ a compositor (like the one in chapter 10) that serves clients that do
 not speak explicit sync ends up copying them mid-frame, and the region
 painted once ends up in one of the compositor's two buffers and not in
 the other. Mesa makes an exception for Xwayland for exactly this
-reason, its mix of clients. Finally, the freedreno maintainer's
-position is that a compositor doing explicit sync must bridge the
-client fences itself (mesa/mesa#16387, since closed); wlroots' Vulkan
-renderer does, its GLES2 renderer does not.
+reason, its mix of clients. Whose job the bridging is, is under
+discussion in mesa/mesa#16387. The freedreno maintainer's position is
+that a compositor doing explicit sync must bridge the client fences
+itself; wlroots' Vulkan renderer does, its GLES2 renderer does not.
+The other position is that a driver which drops implicit sync must
+bridge them, as zink does: the same compositor on zink
+(`MESA_LOADER_DRIVER_OVERRIDE=zink`), clients still on freedreno, does
+not flicker.
 
-Until wlroots does, one file fixes it, naming your compositor's
-executable:
+Until one side or the other bridges, one file fixes it, naming your
+compositor's executable:
 
 ```xml
 <!-- ~/.drirc -->
