@@ -1857,12 +1857,11 @@ installs or in merge request !2:
 A kernel package carrying both has run this laptop since 2026-09-25.
 It is published as the branch
 [`xps13-9345-camera`](https://gitlab.com/thinkoid/artixarm/-/tree/xps13-9345-camera)
-of the same fork as the sound package of §12.5, 7.2.6-6, on top of
-it, so it carries the speakers too. The privacy LED next to the
-camera (`white:camera-indicator`) lights while the camera streams
-once the board patch links it to the sensor. The patch sent upstream
-does; the published package does not yet, and under it the LED stays
-dark while the camera is on.
+of the same fork as the sound package of §12.5, 7.2.6-7, on top of
+it, so it carries the speakers too. The board patch links the privacy
+LED next to the camera (`white:camera-indicator`) to the sensor: it
+lights while the camera streams and goes off after, and user space
+cannot switch it through sysfs.
 
 **What userspace needs.** `libcamera`, `libcamera-ipa` and, for
 `cam`, `libcamera-tools`, from Artix's repositories; libcamera 0.7.2
