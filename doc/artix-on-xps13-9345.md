@@ -211,7 +211,7 @@ tested" means exactly that.
 | Wi-Fi | Works | Firmware from 2026-09-16 or newer (§9.4) |
 | Bluetooth | Works | |
 | USB-C, charging, external display | Works | DisplayPort alt mode at 3840×2160, power delivery both ways, the monitor's hub, on either port. The machine occasionally resets when a charging external panel with a SuperSpeed hub is moved between ports. With a 4-lane DisplayPort link the monitor's hub loses its USB 2.0 half too, and with it the mouse and keyboard; setting the monitor to prefer USB data makes that rarer, not impossible (§12.2) |
-| Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
+| Suspend to RAM | Works | s2idle and deep, bare and under a compositor. The lid suspends and wakes it. Deep draws about 1.2 W, some 2 % of the battery an hour. Failures have occurred: one lid close never slept and looped for 100 minutes (§12.7). Investigation ongoing |
 | Speakers | Works | All four, in stereo. With a kernel carrying the sound node, the machine driver and one volume fix, none of them in the installed kernel yet; three small PipeWire and WirePlumber fragments (§12.5). Bluetooth and USB audio work on any kernel |
 | Microphones | Works | The internal ones, with the speakers' kernel and no configuration of their own (§12.5) |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
@@ -1622,6 +1622,16 @@ reassociates about 15 s after resume, so an ssh session across the
 sleep drops. Drive anything longer than the write under `setsid`,
 writing to a file in home.
 
+**The drain: about 1.2 W in deep.** Measured 2026-09-26: one hour of
+deep sleep on battery, lid open, nothing plugged in, took 1.34 Wh over
+3898 s asleep: 1.24 W, about 2.2 % of the 55 Wh battery an hour, or
+some 12 Wh over a ten-hour night. Awake and idle the same machine
+draws about 6.7 W. The capacitive function row stays lit through the
+sleep; the embedded controller drives it, and it counts in that
+figure. Four more rounds the same day, three deep and one s2idle, all
+came back with the compositor untouched and every `failed_*` counter
+at zero.
+
 **The lid suspends the machine, through elogind.** elogind is on the
 system as polkit's dependency, bus-activated at every tty login by
 `pam_elogind`. There is no `logind.conf`, so its defaults are the
@@ -1661,8 +1671,9 @@ Four traps:
    wpa_supplicant's reassociation. The interface stays down until the
    supplicant is restarted.
 
-Not measured: the sleep drain, the power button as a wake source, and
-a docked suspend with DisplayPort holding the shared PHY (§12.2).
+Not measured: the drain with the lid closed, the power button as a
+wake source, and a docked suspend with DisplayPort holding the shared
+PHY (§12.2).
 
 ---
 
