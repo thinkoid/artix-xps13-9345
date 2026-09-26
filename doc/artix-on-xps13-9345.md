@@ -40,9 +40,10 @@ works in both modes; failures have occurred and are under
 investigation. The speakers and the internal microphones work with
 a kernel carrying three changes (§12.5). Hardware video decoding
 works with a kernel that builds the decoder's driver and one firmware
-file copied from Windows (§12.10). Fan control and the camera
-are untested. The machine uses 31 GB of its 64 GB until the firmware or
-the boot method changes (§8.1). Chapter 3 has the table.
+file copied from Windows (§12.10). The camera works with a kernel
+carrying Linaro's camera series and a board patch for this laptop
+(§12.11). Fan control is untested. The machine uses 31 GB of its
+64 GB until the firmware or the boot method changes (§8.1). Chapter 3 has the table.
 
 **Time budget:** an evening for stages 1–4 if nothing goes wrong, plus
 an hour of downloads beforehand. Chapter 11 is a page: the kernel pin
@@ -197,7 +198,7 @@ partition (§12.10); nothing else has to be extracted.
 
 ## 3. What works and what does not
 
-What this machine did on kernel 7.2.6, 2026-09-19 to -21. "Not
+What this machine did on kernel 7.2.6, 2026-09-19 to -26. "Not
 tested" means exactly that.
 
 | Hardware | State | Notes |
@@ -215,7 +216,7 @@ tested" means exactly that.
 | Microphones | Works | The internal ones, with the speakers' kernel and no configuration of their own (§12.5) |
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
 | Video decoding | Works | H.264, HEVC, VP9 and AV1 in hardware, through V4L2. Needs a kernel with `CONFIG_VIDEO_QCOM_IRIS` (Arch Linux ARM's has it off) and one firmware file copied from Windows (§12.10) |
-| Camera | Not tested | Low priority |
+| Camera | Works | The front camera at 1920×1080, 30 fps, in `cam` and in Firefox. With a kernel carrying Linaro's camera series and a board patch for this laptop, neither in the installed kernel yet; libcamera's software ISP and one udev rule (§12.11) |
 | Battery gauge | Works, minus the percent | The `capacity` file is missing; a one-line driver fix is on `linux-pm` (§12.1) |
 | Battery life | About 7½ h | 6.9–7.2 W at light interactive load (§12.1). Idle not measured |
 | Memory | 31 GB of 64 usable | A firmware limit at the privilege level Linux boots at (§8.1) |
@@ -1190,7 +1191,7 @@ here once they have been done rather than predicted.
 
 ## 12. Living with it — what the first days found
 
-Findings from the first three days of use, 2026-09-19 to -21, kernel
+Findings from the first week of use, 2026-09-19 to -26, kernel
 7.2.6. None of them stops the machine being a workstation. Each one
 will meet the next person, and each looked like something else at
 first.
@@ -1443,11 +1444,15 @@ this document installs (Arch Linux ARM's 7.2.6) or in merge request
    removed that rewrite in 902f497a1ff5 (6.19); without it a volume set
    while nothing plays does not take effect when playback starts, so
    the speakers sit at whatever level they last played. Three lines in
-   `wsa_macro_enable_interpolator()`, not upstream.
+   `wsa_macro_enable_interpolator()`, sent upstream on 2026-09-24 and
+   under review.
 
 A kernel package carrying all three has run this laptop since
-2026-09-23 and will be published with the kernel work of chapter 11.
-Until then the pieces are the ones above. With the device tree
+2026-09-23. It is published as the branch
+[`xps13-9345-sound`](https://gitlab.com/thinkoid/artixarm/-/tree/xps13-9345-sound)
+of a fork of ARMtix's recipes, 7.2.6-2, on top of the merge request of
+chapter 11; ARMtix has been asked whether it wants it. Without that
+package the pieces are the ones above. With the device tree
 changed and the stock volume code, the speakers play and the volume
 quirk of item 3 remains; that was tested with the machine driver
 built separately, not on Arch Linux ARM's kernel itself.
@@ -1818,6 +1823,94 @@ A decode confirms it:
 every frame, 15.8 times real time, with WirePlumber's V4L2 monitor
 back on and audio unaffected.
 
+### 12.11 The camera
+
+**The front camera works** (2026-09-25): an OmniVision OV02C10, 1920×1080
+at 30 fps, upright and white-balanced, in libcamera's `cam` and in
+Firefox, with audio playing alongside. The sensor sends raw Bayer data
+over a MIPI CSI-2 link to the SoC's camera subsystem, **CAMSS**; there
+is no hardware image processor on the Linux side, so libcamera's
+software ISP turns the raw frames into a picture on the GPU.
+
+**What the kernel needs.** None of it is in the kernel this document
+installs or in merge request !2:
+
+1. **The SoC side**: Bryan O'Donoghue's (Linaro) three series for the
+   X1E80100 camera: a CSI2 PHY driver, the PHY API changes in CAMSS,
+   and the camera device tree nodes (CCI, the camera I2C controller,
+   and CAMSS). The PHY driver and the PHY core changes were applied
+   to the PHY tree on 2026-09-23; the CAMSS half and the device tree
+   are in review. The drivers, `CONFIG_VIDEO_QCOM_CAMSS` and
+   `CONFIG_VIDEO_OV02C10`, are already on in the configuration of
+   merge request !2.
+2. **The board patch**: the sensor node for this laptop in
+   `x1e80100-dell-xps13-9345.dts`. No such node existed; the wiring
+   was read from the Windows driver store and matches Dell's sibling
+   board already in mainline: sensor on the second CCI bus at `0x36`,
+   clock from MCLK4, reset on GPIO 237, a 1.8 V supply switched by
+   GPIO 91, two data lanes into CSIPHY4, and the module mounted
+   upside down (`rotation = <180>`). Sent upstream on 2026-09-25, on
+   top of Linaro's device tree series; the current version is
+   [v3](https://lore.kernel.org/all/20260926122533.8200-1-lnicoara@thinkoid.org/).
+   The device tree part is 7.5 at the earliest.
+
+A kernel package carrying both has run this laptop since 2026-09-25.
+It is published as the branch
+[`xps13-9345-camera`](https://gitlab.com/thinkoid/artixarm/-/tree/xps13-9345-camera)
+of the same fork as the sound package of §12.5, 7.2.6-6, on top of
+it, so it carries the speakers too. The privacy LED next to the
+camera (`white:camera-indicator`) lights while the camera streams
+once the board patch links it to the sensor. The patch sent upstream
+does; the published package does not yet, and under it the LED stays
+dark while the camera is on.
+
+**What userspace needs.** `libcamera`, `libcamera-ipa` and, for
+`cam`, `libcamera-tools`, from Artix's repositories; libcamera 0.7.2
+picks the camera up through its `simple` pipeline handler. Then:
+
+1. **Access to a DMA heap.** The software ISP allocates its buffers
+   from one, and all heaps are `root`-only by default. Without access
+   libcamera logs `Could not open any dma-buf provider` and `Failed
+   to create software ISP`, and the picture is not processed. Artix has
+   no logind `uaccess` to grant it; one udev rule does, for the
+   `video` group, which your user must be in:
+
+   ```
+   # /etc/udev/rules.d/60-dma-heap.rules
+   SUBSYSTEM=="dma_heap", KERNEL=="system", GROUP="video", MODE="0660"
+   ```
+
+   `udevadm control --reload && udevadm trigger -s dma_heap`, or
+   reboot. Only the system heap: the cost is that any process in
+   `video` can allocate memory from it.
+2. **For PipeWire and browsers**, `pipewire-libcamera`; WirePlumber
+   then lists the camera as `Built-in Front Camera`. Firefox reaches
+   PipeWire cameras through the camera portal, so it also needs
+   `xdg-desktop-portal` and a backend, `xdg-desktop-portal-gtk`
+   (D-Bus activated, no configuration), and
+   `media.webrtc.camera.allow-pipewire` set to `true` in
+   `about:config`. Without the portal Firefox offers a raw CAMSS
+   device and shows no image.
+
+Check it with `cam -l`, which names `Internal front camera`, then:
+
+```sh
+cam -c 1 --capture=60 -s role=viewfinder,pixelformat=BGR888 --file=frame-#.ppm
+```
+
+The sixtieth frame should be upright and white-balanced.
+
+There is no tuning file for the OV02C10 in libcamera, so it runs its
+uncalibrated profile: good in even light, grainy against a bright
+window.
+
+One trap: the camera allows one user at a time, but a second
+libcamera program started while it streams (`cam`, `qcam`, even
+`cam -l`) fails only after resetting the sensor's flips. The live
+picture turns upside down. Reload the page or restart the stream.
+
+Not verified: the camera across suspend.
+
 ## 13. When it goes wrong
 
 *Shaka, its kernel panicked.*[^shaka]
@@ -1855,6 +1948,9 @@ back on and audio unaffected.
 | `qcom-iris … qcvss8380.mbn failed with error -2` in `dmesg` | the video decoder's firmware is not in `linux-firmware` | §12.10 |
 | Stereo comes out mirrored | channel map; the first WirePlumber fragment | §12.5 |
 | Only the woofers play, tweeters silent | stereo streams are not upmixed; the PipeWire fragment | §12.5 |
+| `cam` works, but libcamera logs `Failed to create software ISP` | no access to a DMA heap | the udev rule of §12.11 |
+| Firefox lists a camera but shows no image | no camera portal; Firefox fell back to a raw CAMSS device | §12.11 |
+| Camera picture turns upside down mid-call | a second libcamera program touched the sensor | §12.11 |
 | Fans never spin up | no EC driver; not tested | chapter 3 |
 
 **Keep the stick.** It is a complete rescue environment: boot it,
@@ -1961,8 +2057,10 @@ chapter 8.
 **Why keep Windows?** Firmware updates for ARM Dells ship through
 Windows. Delete it and the firmware never updates again.
 
-**Why not wait for everything to be upstream?** The audio and EC
-drivers may take another year. Everything else works now.
+**Why not wait for everything to be upstream?** The sound node, the
+camera's device tree and the EC driver may take another year.
+Everything else works now, and the first two work today from a
+carried kernel.
 
 ## Appendix C — Sources
 
