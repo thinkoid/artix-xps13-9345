@@ -217,7 +217,7 @@ tested" means exactly that.
 | Fan control, keyboard backlight, thermal sensors | Not tested | Of interest. All three live in the EC, which has no kernel driver yet |
 | Video decoding | Works | H.264, HEVC, VP9 and AV1 in hardware, through V4L2. Needs a kernel with `CONFIG_VIDEO_QCOM_IRIS` (Arch Linux ARM's has it off) and one firmware file copied from Windows (§12.10) |
 | Camera | Works | The front camera at 1920×1080, 30 fps, in `cam` and in Firefox. With a kernel carrying Linaro's camera series and a board patch for this laptop, neither in the installed kernel yet; libcamera's software ISP and one udev rule (§12.11) |
-| Battery gauge | Works, minus the percent | The `capacity` file is missing; a one-line driver fix is on `linux-pm` (§12.1) |
+| Battery gauge | Works, minus the percent | The `capacity` file is missing before Linux 7.4; the one-line driver fix is applied upstream for 7.4 (§12.1) |
 | Battery life | About 7½ h | 6.9–7.2 W at light interactive load (§12.1). Idle not measured |
 | Memory | 31 GB of 64 usable | A firmware limit at the privilege level Linux boots at (§8.1) |
 | Power off | Works | `halt -p` is a full off. Opening the lid boots the powered-off machine because the firmware's *Power On Lid Open* is on by default (§12.4) |
@@ -1206,8 +1206,10 @@ that reads only `capacity`, most status bars, shows no battery. It is
 a one-line omission: the property was added to the driver's SC8280XP
 table in May 2025 (commit `3f87baacea4d`), and the X1E80100 table
 made in September 2025 (commit `cc3e883a0625`) was copied without it.
-A patch adding it went to `linux-pm` on 2026-09-20 and is reviewed.
-Check whether your kernel has it. Until then, derive the percent:
+The fix went to `linux-pm` on 2026-09-20 and was applied to the
+power-supply tree on 2026-10-04 (commit `f7c62ebfd912`), headed for
+Linux 7.4. It carries no request for the stable series. Check whether
+your kernel has it. Until then, derive the percent:
 
 ```sh
 d=/sys/class/power_supply/qcom-battmgr-bat
@@ -1444,8 +1446,8 @@ this document installs (Arch Linux ARM's 7.2.6) or in merge request
    removed that rewrite in 902f497a1ff5 (6.19); without it a volume set
    while nothing plays does not take effect when playback starts, so
    the speakers sit at whatever level they last played. Three lines in
-   `wsa_macro_enable_interpolator()`, sent upstream on 2026-09-24 and
-   under review.
+   `wsa_macro_enable_interpolator()`, in mainline since 7.3-rc6 (commit
+   `b2047b8cadad`) and queued for the 7.2 stable series.
 
 A kernel package carrying all three has run this laptop since
 2026-09-23. It is published as the branch
@@ -1951,7 +1953,7 @@ Not verified: the camera across suspend.
 | Mouse or keyboard on the monitor's hub is dark, no errors, SuperSpeed hub present | the hub's USB 2.0 half did not come up; move the plug to the other port | §12.2 |
 | Battery sits at 100 % all day on a USB-C monitor | power delivery over the video cable, no charge limit set | §12.6 |
 | A charge threshold write "succeeds" and nothing changes | the firmware clamped or ignored it | §12.6 |
-| Status bar shows no battery | no `capacity` file on this SoC | §12.1 |
+| Status bar shows no battery | no `capacity` file on this SoC before Linux 7.4 | §12.1 |
 | Opening the lid boots a machine you powered off | the firmware's Power On Lid Open switch, on by default | §12.4 |
 | No sound card, `/proc/asound/cards` empty | the device tree has no sound node | §12.5 |
 | Speaker sink exists but nothing plays, `pw-play` waits forever | the video decoder's firmware is missing, its V4L2 device fails to open, and WirePlumber's device discovery stalls audio policy | §12.10, or the second fragment of §12.5 |
